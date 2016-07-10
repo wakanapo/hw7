@@ -8,7 +8,6 @@ import (
 
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 )
 
@@ -51,8 +50,29 @@ Paste JSON here:<p/><textarea name=json cols=80 rows=24></textarea>
 		fmt.Fprintf(w, "PASS")
 		return
 	}
-	move := moves[rand.Intn(len(moves))]
+	move := evaluate(moves)
 	fmt.Fprintf(w, "[%d,%d]", move.Where[0], move.Where[1])
+}
+
+func evaluate(moves []Move) Move {
+	boadEvaluate := [4][4]int{{100, -40, 20, 5},{-40, -80, -1, -1},{20, -1, 5, 1},{5, -1, 1, 0}}
+	max := -100
+	var vestMove Move
+	for _, move := range moves {
+		column := move.Where[0] - 1
+		row := move.Where[1] - 1
+		if column >= 4 {
+			column = 7 - column
+		}
+		if row >= 4 {
+			row = 7 - row
+		}
+		if boadEvaluate[column][row] > max {
+			max = boadEvaluate[column][row]
+			vestMove = move
+		}
+	}
+	return vestMove
 }
 
 type Piece int8
