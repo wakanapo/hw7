@@ -1,55 +1,52 @@
 #!/usr/bin/env python
-#
-# Copyright 2007 Google Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+# -*- coding: utf-8 -*-
+
 import copy
 import json
+import logging
 import random
 import webapp2
 
 # Reads json description of the board and provides simple interface.
 class Game:
-	# Takes json.
-	def __init__(self, body):
-		self.board_ = json.loads(body)
-
-	# Returns underlying board object.
-	def Object(self):
-		return self.board_
+	# Takes json or a board directly.
+	def __init__(self, body=None, board=None):
+                if body:
+		        game = json.loads(body)
+                        self._board = game["board"]
+                else:
+                        self._board = board
+                
 
 	# Returns piece on the board.
 	# 0 for no pieces, 1 for player 1, 2 for player 2.
 	# None for coordinate out of scope.
 	def Pos(self, x, y):
-		return Pos(self.board_["board"]["Pieces"], x, y)
+		return Pos(self._board["Pieces"], x, y)
 
 	# Returns who plays next.
 	def Next(self):
-		return self.board_["board"]["Next"]
+		return self._board["Next"]
 
 	# Returns the array of valid moves for next player.
 	# Each move is a dict
 	#   "Where": [x,y]
 	#   "As": player number
 	def ValidMoves(self):
-		if self.board_["valid_moves"]:
-			return self.board_["valid_moves"]
-		return []
+                moves = []
+                for y in xrange(1,9):
+                        for x in xrange(1,9):
+                                move = {"Where": [x,y],
+                                        "As": self.Next()}
+                                if self.NextBoardPosition(move):
+                                        moves.append(move)
+                return moves
+                                
 
-	# Helper function of NextBoardPosition.
-	# It looks towards (delta_x, delta_y) direction and flip if valid.
+	# Helper function of NextBoardPosition.  It looks towards
+	# (delta_x, delta_y) direction for one of our own pieces and
+	# flips pieces in between if the move is valid. Returns True
+	# if pieces are captured in this direction, False otherwise.
 	def __UpdateBoardDirection(self, new_board, x, y, delta_x, delta_y):
 		player = self.Next()
 		opponent = 3 - player
@@ -60,32 +57,44 @@ class Game:
 			flip_list.append([look_x, look_y])
 			look_x += delta_x
 			look_y += delta_y
-		if Pos(new_board, look_x, look_y) == player:
+		if Pos(new_board, look_x, look_y) == player and len(flip_list) > 0:
+                        # there's a continuous line of our opponents
+                        # pieces between our own pieces at
+                        # [look_x,look_y] and the newly placed one at
+                        # [x,y], making it a legal move.
 			SetPos(new_board, x, y, player)
 			for flip_move in flip_list:
 				flip_x = flip_move[0]
 				flip_y = flip_move[1]
 				SetPos(new_board, flip_x, flip_y, player)
+                        return True
+                return False
 
-	# Takes a move dict and return the board positions after that move.
+	# Takes a move dict and return the new Game state after that move.
 	# Returns None if the move itself is invalid.
 	def NextBoardPosition(self, move):
-		if move not in self.ValidMoves():
-			return None
 		x = move["Where"][0]
 		y = move["Where"][1]
-		new_board = copy.deepcopy(self.board_["board"]["Pieces"])
+                if self.Pos(x, y) != 0:
+                        # x,y is already occupied.
+                        return None
+		new_board = copy.deepcopy(self._board)
+                pieces = new_board["Pieces"]
 
-		self.__UpdateBoardDirection(new_board, x, y, 1, 0)
-		self.__UpdateBoardDirection(new_board, x, y, 0, 1)
-		self.__UpdateBoardDirection(new_board, x, y, -1, 0)
-		self.__UpdateBoardDirection(new_board, x, y, 0, -1)
-		self.__UpdateBoardDirection(new_board, x, y, 1, 1)
-		self.__UpdateBoardDirection(new_board, x, y, -1, 1)
-		self.__UpdateBoardDirection(new_board, x, y, 1, -1)
-		self.__UpdateBoardDirection(new_board, x, y, -1, -1)
-
-		return new_board
+		if not (self.__UpdateBoardDirection(pieces, x, y, 1, 0)
+                        | self.__UpdateBoardDirection(pieces, x, y, 0, 1)
+		        | self.__UpdateBoardDirection(pieces, x, y, -1, 0)
+		        | self.__UpdateBoardDirection(pieces, x, y, 0, -1)
+		        | self.__UpdateBoardDirection(pieces, x, y, 1, 1)
+		        | self.__UpdateBoardDirection(pieces, x, y, -1, 1)
+		        | self.__UpdateBoardDirection(pieces, x, y, 1, -1)
+		        | self.__UpdateBoardDirection(pieces, x, y, -1, -1)):
+                        # Nothing was captured. Move is invalid.
+                        return None
+                
+                # Something was captured. Move is valid.
+                new_board["Next"] = 3 - self.Next()
+		return Game(board=new_board)
 
 # Returns piece on the board.
 # 0 for no pieces, 1 for player 1, 2 for player 2.
@@ -113,7 +122,7 @@ def PrettyPrint(board, nl="<br>"):
 		s += nl
 	return s
 
-def ParseMove(move):
+def PrettyMove(move):
 	m = move["Where"]
 	return '%s%d' % (chr(ord('A') + m[0] - 1), m[1])
 
@@ -142,6 +151,7 @@ Paste JSON here:<p/><textarea name=json cols=80 rows=24></textarea>
         # Do the picking of a move and print the result.
         self.pickMove(g)
 
+
     def pickMove(self, g):
     	# Gets all valid moves.
     	valid_moves = g.ValidMoves()
@@ -150,8 +160,11 @@ Paste JSON here:<p/><textarea name=json cols=80 rows=24></textarea>
     		self.response.write("PASS")
     	else:
     		# Chooses a valid move randomly if available.
-	    	move = random.choice(g.ValidMoves())
-    		self.response.write(ParseMove(move))
+                # TO STEP STUDENTS:
+                # You'll probably want to change how this works, to do something
+                # more clever than just picking a random move.
+	    	move = random.choice(valid_moves)
+    		self.response.write(PrettyMove(move))
 
 app = webapp2.WSGIApplication([
     ('/', MainHandler)
