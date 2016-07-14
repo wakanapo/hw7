@@ -50,30 +50,10 @@ Paste JSON here:<p/><textarea name=json cols=80 rows=24></textarea>
 		fmt.Fprintf(w, "PASS")
 		return
 	}
-	move := evaluate(moves)
+	move := board.EvaluateFromValidMoves(moves)
 	fmt.Fprintf(w, "[%d,%d]", move.Where[0], move.Where[1])
 }
 
-func evaluate(moves []Move) Move {
-	boadEvaluate := [4][4]int{{100, -40, 20, 5},{-40, -80, -1, -1},{20, -1, 5, 1},{5, -1, 1, 0}}
-	max := -100
-	var vestMove Move
-	for _, move := range moves {
-		column := move.Where[0] - 1
-		row := move.Where[1] - 1
-		if column >= 4 {
-			column = 7 - column
-		}
-		if row >= 4 {
-			row = 7 - row
-		}
-		if boadEvaluate[column][row] > max {
-			max = boadEvaluate[column][row]
-			vestMove = move
-		}
-	}
-	return vestMove
-}
 
 type Piece int8
 
@@ -238,3 +218,110 @@ func (b *Board) ValidMoves() []Move {
 	}
 	return moves
 }
+
+func (b *Board) NextBoard(m Move) Board {
+	board := *b
+	board.Pieces[m.Where[0] - 1][m.Where[1] - 1] = board.Next
+	board.Next = board.Next.Opposite()
+	return board
+}
+
+func (b *Board) GetGameCount() int {
+	cnt := 0
+	for y := 1; y <= 8; y++ {
+		for x := 1; x <= 8; x++ {
+			if b.Pieces[x][y] != 0 {
+				cnt += 1
+			}
+		}
+	}
+	return cnt
+}
+
+func (b *Board) ScoreDifference() int {
+	score := 0
+	myColor := b.Next
+	for y := 1; y <= 8; y++ {
+		for x := 1; x <= 8; x++ {
+			if b.Pieces[x][y] == myColor {
+				score += 1
+			}
+			if b.Pieces[x][y] == myColor.Opposite() {
+				score -= 1
+			}
+		}
+	}
+	return score
+}
+
+func (b *Board) Evaluate(moves []Move) Move{
+	cnt := b.GetGameCount()
+	switch {
+	case cnt < 30:
+		return b.EvaluateFromValidMoves(moves)
+	case cnt < 55:
+		return b.EvaluateFromBoadStatus(moves)
+	default:
+		return b.EvaluateFromCaptures(moves)
+	}
+}
+
+func (b *Board) EvaluateFromBoadStatus(moves []Move) []Move {
+	boadEvaluate := [4][4]int{{68, -12, 53, -8},{-12, -62, -33, -7},{53, -33, 26, 8},{-8, -7, 8, -18}}
+	max := -100
+	var vestMove Move
+	for _, move := range moves {
+		column := move.Where[0] - 1
+		row := move.Where[1] - 1
+		if column >= 4 {
+			column = 7 - column
+		}
+		if row >= 4 {
+			row = 7 - row
+		}
+		if boadEvaluate[column][row] > max {
+			max = boadEvaluate[column][row]
+			vestMove = move
+		}
+	}
+	return vestMove
+}
+
+func (b *Board) EvaluateFromValidMoves(moves []Move) Move {
+	var vestMove Move
+	min := 100
+	for _, move := range moves {
+		board := *b
+		board.realMove(move)
+		nextMoves := board.ValidMoves()
+		
+		if len(nextMoves) < min {
+			vestMove = move
+			min = len(nextMoves)
+		}
+	}
+	return vestMove
+}
+
+func (b *Board) EvaluateFromCaptures(moves []Move) Move {
+	var vestMove Move
+	max := 0
+	for _, move := range moves {
+		captures, _ := b.tryMove(move)
+		if len(captures) > max {
+			vestMove = move
+			max = len(captures)
+		}
+	}
+	return vestMove
+}
+// func (b *Board) Negamax_aux(color Piece, depth int, alpha int, beta int) {
+// 	if depth == 0 {
+// 		return b.ScoreDifference()
+// 	}
+// 	moves = b.ValidMoves()
+// 	if len(moves) == 0 {
+// 		return b.
+		
+// 	}
+// }
